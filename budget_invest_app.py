@@ -1,44 +1,60 @@
-# 👇 Add this at the top
-from fastapi import FastAPI
-from pydantic import BaseModel
-import uvicorn
 import streamlit as st
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import uvicorn
 from botpress_client import BotpressClient
 import os
 
-# ✅ Botpress credentials from environment or hardcode (for now)
-BOTPRESS_API_ID = os.getenv("BOTPRESS_API_ID", "your_botpress_api_id")
-BOTPRESS_TOKEN = os.getenv("BOTPRESS_TOKEN", "your_botpress_token")
-bp_client = BotpressClient(api_id=BOTPRESS_API_ID, user_key=BOTPRESS_TOKEN)
+# Botpress credentials via Streamlit secrets
+CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
+BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 
-# 👇 FastAPI setup
+# Initialize Botpress
+bot_client = BotpressClient(api_id=CHAT_API_ID, user_key=BOTPRESS_TOKEN)
+
+# ✅ FastAPI setup
 api = FastAPI()
 
-class Query(BaseModel):
-    message: str
-
 @api.post("/api/ask")
-def ask(query: Query):
-    convo = bp_client.create_conversation()
-    conv_id = convo['id']
-    bp_client.send_message(conv_id, query.message)
-    messages = bp_client.list_messages(conv_id)
-    last_reply = messages[-1]["payload"]["text"]
-    return {"response": last_reply}
+async def ask_bot(request: Request):
+    data = await request.json()
+    user_message = data.get("message", "")
 
-# 👇 Streamlit app
-st.set_page_config(page_title="💸 Budgeting + Investment Planner")
-st.title("💸 Budgeting & Investment Assistant")
+    try:
+        conv = bot_client.create_conversation()
+        conv_id = conv["id"]
+        bot_client.send_message(conv_id, user_message)
+        reply = bot_client.list_messages(conv_id)
+        messages = reply.get("messages", [])
+        if messages:
+            bot_reply = messages[-1].get("payload", {}).get("text", "No reply")
+        else:
+            bot_reply = "No messages returned."
+        return JSONResponse(content={"reply": bot_reply})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-user_query = st.text_input("Ask a question")
-if user_query:
-    convo = bp_client.create_conversation()
-    conv_id = convo['id']
-    bp_client.send_message(conv_id, user_query)
-    messages = bp_client.list_messages(conv_id)
-    last_reply = messages[-1]["payload"]["text"]
-    st.write(last_reply)
+# ✅ Streamlit UI (optional frontend)
+st.set_page_config(page_title="💬 Budget Bot Assistant", layout="centered")
+st.title("💬 Ask Your Budget Assistant")
 
-# 👇 For standalone API dev
-if __name__ == "__main__":
+user_input = st.text_input("Type your question:")
+if st.button("Ask") and user_input:
+    with st.spinner("Thinking..."):
+        conv = bot_client.create_conversation()
+        conv_id = conv["id"]
+        bot_client.send_message(conv_id, user_input)
+        response = bot_client.list_messages(conv_id)
+        messages = response.get("messages", [])
+        if messages:
+            reply = messages[-1].get("payload", {}).get("text", "No reply")
+            st.success(reply)
+        else:
+            st.warning("No messages received.")
+
+# ✅ Required for Streamlit Cloud to recognize FastAPI
+def run():
     uvicorn.run(api, host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    run()
