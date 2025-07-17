@@ -1,35 +1,26 @@
+# 📁 voice_api.py
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 import requests
+import os
 
 app = FastAPI()
-
-# CORS setup to allow Android apps to call this API
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 class VoiceInput(BaseModel):
     message: str
 
 @app.post("/api/voice")
-async def process_voice(input: VoiceInput):
+def voice_to_agent(input: VoiceInput):
     user_message = input.message
 
-    # Send to your Streamlit Agent or Gemini/DeepSeek endpoint
-    # Replace below with your actual logic
-    response = requests.post(
-        "https://pafadvisor.streamlit.app/your-api-endpoint",  # ❗Replace with actual endpoint if exists
-        json={"query": user_message}
-    )
+    # Example: Forward to your Streamlit agent or Botpress
+    # This is a placeholder — replace with actual logic/API call
+    streamlit_agent_url = os.getenv("STREAMLIT_AGENT_URL", "https://pafadvisor.streamlit.app")
 
-    if response.status_code == 200:
-        return {"reply": response.json().get("response", "🧠 No detailed reply returned.")}
-    else:
-        return {"reply": "⚠️ Error contacting AI agent."}
+    # In a real case, you could store, forward, or process this message
+    print(f"🔁 Forwarding message to Streamlit agent: {user_message}")
+
+    return {
+        "reply": f"🧠 Received: '{user_message}'. This will be sent to your agent at {streamlit_agent_url}."
+    }
