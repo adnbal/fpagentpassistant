@@ -1,51 +1,40 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import requests
-import google.generativeai as genai
+from botpress_client import BotpressClient
 
-# 🔐 Secrets
-genai.configure(api_key=st.secrets["gemini"]["api_key"])
-OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
+# Secrets
+BOT_ID = st.secrets["botpress"]["bot_id"]
+CLIENT_ID = st.secrets["botpress"]["client_id"]
 TOKEN = st.secrets["botpress"]["token"]
 
-# ✅ Botpress Details
-BOT_ID = "16e43556-ccfc-4fea-b39b-a9eefac04ef3"
-CLIENT_ID = "94c88ab7-520e-4704-8423-be1670714153"
+st.set_page_config(page_title="💬 Budget Bot", layout="centered")
+st.title("💬 Ask your Budgeting Assistant (Botpress)")
 
-# ✅ Updated BotpressClient (import this from your botpress_client.py if separated)
-class BotpressClient:
-    def __init__(self, bot_id, client_id, token):
-        self.bot_id = bot_id
-        self.client_id = client_id
-        self.token = token
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-            "X-Bot-Id": self.bot_id,
-            "X-Client-Id": self.client_id,
-            "Content-Type": "application/json"
-        }
+# Initialize session state
+if "conversation_id" not in st.session_state:
+    try:
+        client = BotpressClient(BOT_ID, CLIENT_ID, TOKEN)
+        conv = client.create_conversation()
+        st.session_state.conversation_id = conv["id"]
+        st.session_state.client = client
+    except Exception as e:
+        st.error("❌ Could not start conversation with Botpress.")
+        st.stop()
 
-    def create_conversation(self):
-        url = f"https://chat.botpress.cloud/api/v1/conversations"
-        response = requests.post(url, headers=self.headers)
-        return response.json()
+user_input = st.text_input("Type your message:")
+if st.button("Submit") and user_input:
+    try:
+        client = st.session_state.client
+        conversation_id = st.session_state.conversation_id
 
-    def send_message(self, conversation_id, text):
-        url = f"https://chat.botpress.cloud/api/v1/conversations/{conversation_id}/messages"
-        data = {
-            "type": "text",
-            "payload": {
-                "text": text
-            }
-        }
-        response = requests.post(url, headers=self.headers, json=data)
-        return response.json()
+        client.send_message(conversation_id, user_input)
+        st.success("✅ Message sent!")
 
-    def list_messages(self, conversation_id):
-        url = f"https://chat.botpress.cloud/api/v1/conversations/{conversation_id}/messages"
-        response = requests.get(url, headers=self.headers)
-        return response.json()
-
-# ✅ Initialize Botpress client
-client = BotpressClient(bot_id=BOT_ID, client_id=CLIENT_ID, token=TOKEN)
+        st.markdown("**Botpress Reply:**")
+        messages = client.get_messages(conversation_id)
+        bot_messages = [m for m in messages["messages"] if m["type"] == "text" and m["role"] == "bot"]
+        if bot_messages:
+            st.write(bot_messages[-1]["payload"]["text"])
+        else:
+            st.warning("⚠️ No response received from Botpress.")
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
