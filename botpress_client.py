@@ -1,3 +1,4 @@
+# botpress_client.py
 import requests
 
 class BotpressClient:
@@ -5,33 +6,31 @@ class BotpressClient:
         self.bot_id = bot_id
         self.client_id = client_id
         self.token = token
-        self.base_url = "https://chat.botpress.cloud"
-
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json"
         }
+        self.base_url = "https://chat.botpress.cloud/api/v1"
 
     def create_conversation(self):
-        url = f"{self.base_url}/api/v1/bots/{self.bot_id}/conversations"
-        payload = {"clientId": self.client_id}
-        response = requests.post(url, json=payload, headers=self.headers)
-        response.raise_for_status()
+        url = f"{self.base_url}/conversations"
+        payload = {
+            "botId": self.bot_id,
+            "clientId": self.client_id
+        }
+        response = requests.post(url, headers=self.headers, json=payload)
         return response.json()
 
-    def send_message(self, conversation_id, message):
-        url = f"{self.base_url}/api/v1/bots/{self.bot_id}/conversations/{conversation_id}/messages"
+    def send_message(self, conversation_id, text):
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
         payload = {
             "type": "text",
-            "text": message,
-            "role": "user"
+            "text": text
         }
-        response = requests.post(url, json=payload, headers=self.headers)
-        response.raise_for_status()
+        response = requests.post(url, headers=self.headers, json=payload)
         return response.json()
 
-    def get_messages(self, conversation_id):
-        url = f"{self.base_url}/api/v1/bots/{self.bot_id}/conversations/{conversation_id}/messages"
+    def list_messages(self, conversation_id):
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
         response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
         return response.json()
