@@ -3,4 +3,4 @@ pandas
 requests
 plotly
 google-generativeai
-openai
+openai>=1.0.0
