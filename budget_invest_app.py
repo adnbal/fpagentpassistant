@@ -3,109 +3,112 @@ import pandas as pd
 import plotly.express as px
 import requests
 import google.generativeai as genai
-import time
+import openai
+import json
+from botpress_client import BotpressClient
 
 # 🔐 Load secrets
 CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
 BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
-ALPHA_API_KEY = st.secrets["alpha_vantage"]["api_key"]
+ALPHA_VANTAGE_API_KEY = st.secrets["alpha_vantage"]["api_key"]
 
-# 📄 Page config
-st.set_page_config(page_title="💸 Budgeting & Investment Planner", layout="wide")
+# 📄 Streamlit setup
+st.set_page_config(page_title="💸 Multi-LLM Budget Planner", layout="wide")
 st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
 
-# 📥 Collect inputs
-income = st.number_input("💰 Enter your monthly income", value=5000)
-expenses = st.number_input("📤 Enter your monthly expenses", value=3000)
-savings = st.number_input("🏦 Current savings", value=10000)
-
-st.divider()
+# 🧾 Collect budget inputs
+income = st.number_input("Monthly Income", min_value=0)
+expenses = st.number_input("Monthly Expenses", min_value=0)
+savings = st.number_input("Current Savings", min_value=0)
 
 # 📊 Pie Chart
-df = pd.DataFrame({
-    'Category': ['Expenses', 'Remaining'],
-    'Amount': [expenses, income - expenses]
-})
-fig = px.pie(df, names='Category', values='Amount', title='💸 Expense Breakdown')
-st.plotly_chart(fig, use_container_width=True)
+if income > 0:
+    data = pd.DataFrame({
+        "Category": ["Expenses", "Savings", "Remaining"],
+        "Amount": [expenses, savings, income - expenses - savings]
+    })
+    fig = px.pie(data, values="Amount", names="Category", title="💰 Budget Distribution")
+    st.plotly_chart(fig)
 
-# ⚠️ Dynamic warnings
-if expenses > income:
-    st.warning("🚨 You are spending more than you earn! Cut down on non-essential expenses.")
-elif expenses > 0.8 * income:
-    st.info("🔎 Your expenses are above 80% of income. Review spending habits.")
-else:
-    st.success("✅ Your spending is within a healthy range.")
+# ⚠️ Dynamic Warnings
+warnings = []
+if expenses > income * 0.7:
+    warnings.append("⚠️ Your expenses exceed 70% of income. Reduce discretionary spending.")
+if savings < income * 0.2:
+    warnings.append("💡 Consider increasing your savings to at least 20% of income.")
+if income - expenses - savings < 0:
+    warnings.append("🚨 Your spending exceeds income. Adjust budget to avoid debt.")
 
-# 🧠 Gemini investment advice
-prompt = f"""
-My income is {income}, expenses are {expenses}, and I have {savings} in savings.
-Give budgeting and investment suggestions.
-"""
+if warnings:
+    st.subheader("📌 Financial Warnings")
+    for w in warnings:
+        st.warning(w)
 
-if st.button("🧠 Get Gemini Advice"):
-    with st.spinner("Gemini thinking..."):
-        response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
-        st.subheader("💡 Gemini Suggests:")
-        st.markdown(response.text)
-
-# 🧠 DeepSeek investment advice
-if st.button("🔍 Get DeepSeek Advice"):
-    with st.spinner("DeepSeek analyzing..."):
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        }
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": "You are a budgeting and investment expert."},
-                {"role": "user", "content": prompt}
-            ]
-        }
-        res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        if res.status_code == 200:
-            deepseek_text = res.json()["choices"][0]["message"]["content"]
-            st.subheader("💡 DeepSeek Suggests:")
-            st.markdown(deepseek_text)
-        else:
-            st.error("⚠️ DeepSeek failed to respond. Check API key or usage.")
-
-st.divider()
-
-# 📈 Optional: Alpha Vantage returns
+# 📈 Alpha Vantage investment data
 def get_alpha_vantage_monthly_return(symbol):
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol={symbol}&apikey={ALPHA_API_KEY}"
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol={symbol}&apikey={ALPHA_VANTAGE_API_KEY}"
     r = requests.get(url)
     if r.status_code != 200:
         return None
-    try:
-        ts = r.json()["Monthly Adjusted Time Series"]
-        df = pd.DataFrame.from_dict(ts, orient='index')
-        df = df.astype(float)
-        df['return'] = df['5. adjusted close'].pct_change()
-        return df[['5. adjusted close', 'return']].dropna().head(12)
-    except:
-        return None
+    data = r.json()
+    ts = data.get("Monthly Adjusted Time Series", {})
+    df = pd.DataFrame(ts).T
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    df["adj_close"] = pd.to_numeric(df["5. adjusted close"], errors="coerce")
+    df["monthly_return"] = df["adj_close"].pct_change()
+    return df[["adj_close", "monthly_return"]].dropna()
 
-st.subheader("📊 Sample Investment Returns (Alpha Vantage)")
-symbol = st.text_input("Enter a stock symbol (e.g. AAPL, MSFT)", value="AAPL")
-if symbol:
-    df_ret = get_alpha_vantage_monthly_return(symbol)
-    if df_ret is not None:
-        st.line_chart(df_ret['5. adjusted close'])
+# 📉 Show investment returns
+with st.expander("📈 Investment Option Analysis (S&P 500)"):
+    df = get_alpha_vantage_monthly_return("SPY")
+    if df is not None:
+        st.line_chart(df["adj_close"])
+        st.line_chart(df["monthly_return"])
     else:
-        st.warning("No data found or API limit reached.")
+        st.error("Failed to fetch Alpha Vantage data.")
 
-# 💬 Embedded Botpress assistant
-st.subheader("💬 Talk to Your Budget Bot")
-st.components.v1.html(
-    f"""
-    <iframe
-        src="https://chat.botpress.cloud/{CHAT_API_ID}/webchat"
-        width="100%" height="600" frameborder="0"
-    ></iframe>
-    """,
-    height=620
-)
+# 🧠 Gemini Suggestions
+def gemini_budget_advice(income, expenses, savings):
+    prompt = f"""My monthly income is {income}, expenses are {expenses}, and current savings are {savings}.
+    Give personalized budgeting and investment suggestions in bullet points."""
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    return response.text
+
+# 🧠 DeepSeek (OpenRouter) Suggestions
+def deepseek_advice(income, expenses, savings):
+    prompt = f"""You are a financial assistant. User earns {income}, spends {expenses}, and has {savings} in savings.
+Provide budgeting and investment advice."""
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    body = {
+        "model": "deepseek/deepseek-chat",
+        "messages": [{"role": "user", "content": prompt}]
+    }
+    res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+    try:
+        return res.json()["choices"][0]["message"]["content"]
+    except:
+        return "DeepSeek failed."
+
+# 🔮 LLM Advice
+st.subheader("🔮 AI-Based Financial Suggestions")
+tab1, tab2 = st.tabs(["Gemini Advice", "DeepSeek Advice"])
+with tab1:
+    st.markdown(gemini_budget_advice(income, expenses, savings))
+with tab2:
+    st.markdown(deepseek_advice(income, expenses, savings))
+
+# 💬 Botpress Chat
+st.subheader("🤖 Chat With Your AI Assistant")
+with st.container():
+    st.components.v1.iframe(
+        f"https://chat.botpress.cloud/embed?botId={CHAT_API_ID}",
+        height=500,
+        scrolling=True
+    )
