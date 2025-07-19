@@ -1,120 +1,36 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
+
 import requests
-import google.generativeai as genai
-import openai
-import numpy as np
-from botpress_client import BotpressClient
 
-# 🔐 Load secrets
-CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
-BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
-genai.configure(api_key=st.secrets["gemini"]["api_key"])
-OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
+class BotpressClient:
+    def __init__(self, api_id, user_key):
+        self.api_id = api_id
+        self.user_key = user_key
+        self.headers = {
+            "Authorization": f"Bearer {self.user_key}",
+            "Content-Type": "application/json"
+        }
+        self.base_url = f"https://chat.botpress.cloud/{self.api_id}/api/v1"
 
-# 📄 Streamlit setup
-st.set_page_config(page_title="💸 Multi-LLM Budget Planner", layout="wide")
-st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
+    def create_conversation(self):
+        url = f"{self.base_url}/conversations"
+        response = requests.post(url, headers=self.headers)
+        if response.status_code != 200:
+            print("❌ Failed to create conversation:", response.text)
+        return response.json()
 
-# 🧾 Collect budget inputs
-income = st.number_input("Monthly Income", min_value=0)
-expenses = st.number_input("Monthly Expenses", min_value=0)
-savings = st.number_input("Current Savings", min_value=0)
+    def send_message(self, conversation_id, text):
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        payload = {
+            "type": "text",
+            "text": text
+        }
+        response = requests.post(url, headers=self.headers, json=payload)
+        if response.status_code != 200:
+            print("❌ Failed to send message:", response.text)
 
-# 📊 Pie Chart
-if income > 0:
-    data = pd.DataFrame({
-        "Category": ["Expenses", "Savings", "Remaining"],
-        "Amount": [expenses, savings, income - expenses - savings]
-    })
-    fig = px.pie(data, values="Amount", names="Category", title="💰 Budget Distribution")
-    st.plotly_chart(fig)
-
-# ⚠️ Dynamic Warnings
-warnings = []
-if expenses > income * 0.7:
-    warnings.append("⚠️ Your expenses exceed 70% of income. Reduce discretionary spending.")
-if savings < income * 0.2:
-    warnings.append("💡 Consider increasing your savings to at least 20% of income.")
-if income - expenses - savings < 0:
-    warnings.append("🚨 Your spending exceeds income. Adjust budget to avoid debt.")
-
-if warnings:
-    st.subheader("📌 Financial Warnings")
-    for w in warnings:
-        st.warning(w)
-
-# 📈 Simulated investment return function (fallback for Alpha Vantage)
-def get_alpha_vantage_monthly_return(symbol):
-    use_dummy = True  # Always use simulated data (avoid API errors)
-    
-    if not use_dummy:
-        # Optionally implement real Alpha Vantage here
-        pass
-
-    # 📊 Simulated fallback data
-    dates = pd.date_range(end=pd.Timestamp.today(), periods=24, freq="M")
-    base_price = 400
-    simulated_prices = [base_price + np.random.normal(0, 5) + i * 2 for i in range(len(dates))]
-    simulated_returns = pd.Series(simulated_prices).pct_change().fillna(0)
-
-    df_sim = pd.DataFrame({
-        "adj_close": simulated_prices,
-        "monthly_return": simulated_returns
-    }, index=dates)
-
-    return df_sim
-
-# 📉 Show investment returns
-with st.expander("📈 Investment Option Analysis (Simulated S&P 500)"):
-    df = get_alpha_vantage_monthly_return("SPY")
-    if df is not None:
-        st.line_chart(df["adj_close"])
-        st.line_chart(df["monthly_return"])
-    else:
-        st.error("Failed to load investment data.")
-
-# 🧠 Gemini Suggestions
-def gemini_budget_advice(income, expenses, savings):
-    prompt = f"""My monthly income is {income}, expenses are {expenses}, and current savings are {savings}.
-    Give personalized budgeting and investment suggestions in bullet points."""
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    return response.text
-
-# 🧠 DeepSeek (OpenRouter) Suggestions
-def deepseek_advice(income, expenses, savings):
-    prompt = f"""You are a financial assistant. User earns {income}, spends {expenses}, and has {savings} in savings.
-Provide budgeting and investment advice."""
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    body = {
-        "model": "deepseek/deepseek-chat",
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
-    try:
-        return res.json()["choices"][0]["message"]["content"]
-    except:
-        return "DeepSeek failed."
-
-# 🔮 LLM Advice
-st.subheader("🔮 AI-Based Financial Suggestions")
-
-if st.button("💬 Get Gemini Suggestions"):
-    st.markdown(gemini_budget_advice(income, expenses, savings))
-
-if st.button("🧠 Get DeepSeek Suggestions"):
-    st.markdown(deepseek_advice(income, expenses, savings))
-
-# 💬 Botpress Chat
-st.subheader("🤖 Chat With Your AI Assistant")
-with st.container():
-    st.components.v1.iframe(
-        f"https://chat.botpress.cloud/embed?botId={CHAT_API_ID}",
-        height=500,
-        scrolling=True
-    )
+    def list_messages(self, conversation_id):
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            print("❌ Failed to fetch messages:", response.text)
+        return response.json()
