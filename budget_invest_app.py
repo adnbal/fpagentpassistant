@@ -1,11 +1,6 @@
-# budget_invest_app.py
-
 import streamlit as st
-import pandas as pd
-import plotly.express as px
 import requests
 import google.generativeai as genai
-from botpress_client import BotpressClient  # ✅ This uses the updated BotpressClient
 
 # 🔐 Load Secrets
 BOT_ID = st.secrets["botpress"]["bot_id"]
@@ -14,71 +9,64 @@ TOKEN = st.secrets["botpress"]["token"]
 GEMINI_KEY = st.secrets["gemini"]["api_key"]
 DEEPSEEK_KEY = st.secrets["openrouter"]["api_key"]
 
-# 📄 App Config
-st.set_page_config(page_title="💸 Budgeting + Investment Planner", layout="wide")
-st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
-
-# 📊 Budget Input Section
-st.header("📥 Enter Your Budget Details")
-
-income = st.number_input("Monthly Income ($)", min_value=0)
-expenses = st.number_input("Monthly Expenses ($)", min_value=0)
-savings = st.number_input("Current Savings ($)", min_value=0)
-
-# 🧠 Warnings
-st.subheader("⚠️ AI Financial Warnings")
-if expenses > income:
-    st.error("🚨 You're spending more than you earn!")
-elif expenses > 0.8 * income:
-    st.warning("⚠️ High expenses — consider reducing discretionary spending.")
-else:
-    st.success("✅ Your budget looks healthy!")
-
-# 📈 Pie Chart
-st.subheader("📊 Budget Allocation")
-budget_data = pd.DataFrame({
-    'Category': ['Income', 'Expenses', 'Savings'],
-    'Amount': [income, expenses, savings]
-})
-fig = px.pie(budget_data, names='Category', values='Amount', title='Budget Distribution')
-st.plotly_chart(fig, use_container_width=True)
-
-# 🤖 Gemini Suggestion
-st.subheader("📢 Gemini AI Investment Advice")
+# 🔧 Configure Gemini
 genai.configure(api_key=GEMINI_KEY)
 
-def get_gemini_advice(income, expenses, savings):
-    prompt = f"""
-    I have a monthly income of ${income}, expenses of ${expenses}, and savings of ${savings}.
-    Provide 3 short investment suggestions tailored for my situation.
-    """
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    return response.text
+# 📄 App Config
+st.set_page_config(page_title="💬 Budgeting Chat Assistant", layout="centered")
+st.title("💬 Budgeting Chat Assistant")
 
-if income > 0:
-    advice = get_gemini_advice(income, expenses, savings)
-    st.info(advice)
-
-# 💬 Ask a Question via Botpress
-st.subheader("💬 Budgeting Chat Assistant")
+# ✨ Input UI
 user_input = st.text_input("Type your question for the bot:")
+submit = st.button("Submit")
 
-if st.button("Submit") and user_input:
-    try:
-        # 🟢 Set up Botpress Client
-        bp_client = BotpressClient(BOT_ID, CLIENT_ID, TOKEN)
+# 💬 Botpress API URLs
+CONVO_URL = f"https://chat.botpress.cloud/v1/conversations"
+MESSAGE_URL = lambda cid: f"https://chat.botpress.cloud/v1/conversations/{cid}/messages"
 
-        # 🟢 Create conversation and send message
-        conversation_id = bp_client.create_conversation()
-        bp_client.send_message(conversation_id, user_input)
-        messages = bp_client.list_messages(conversation_id)
+# 📤 Talk to Botpress
+def talk_to_botpress(question):
+    headers = {
+        "Authorization": f"Bearer {TOKEN}",
+        "X-Bot-Id": BOT_ID,
+        "X-Client-Id": CLIENT_ID,
+        "Content-Type": "application/json"
+    }
 
-        if messages:
-            last_msg = messages[-1].get("payload", {}).get("text", "No message returned.")
-            st.success(f"🤖 Botpress: {last_msg}")
-        else:
-            st.warning("⚠️ No messages returned from Botpress.")
+    # 🗨️ Step 1: Create conversation
+    convo_res = requests.post(CONVO_URL, headers=headers)
+    if convo_res.status_code != 200:
+        return f"❌ Failed to start conversation: {convo_res.text}"
 
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
+    convo_id = convo_res.json().get("id")
+    if not convo_id:
+        return "❌ Could not retrieve conversation ID."
+
+    # 📩 Step 2: Send user message
+    message_payload = {
+        "type": "text",
+        "text": question
+    }
+    send_res = requests.post(MESSAGE_URL(convo_id), headers=headers, json=message_payload)
+    if send_res.status_code != 200:
+        return f"❌ Failed to send message: {send_res.text}"
+
+    # 🕒 Wait for reply
+    import time
+    time.sleep(2)
+
+    # 📥 Step 3: Get bot reply
+    get_res = requests.get(MESSAGE_URL(convo_id), headers=headers)
+    if get_res.status_code != 200:
+        return f"⚠️ No messages returned from Botpress."
+
+    messages = get_res.json().get("messages", [])
+    bot_reply = next((m["payload"]["text"] for m in messages[::-1] if m.get("type") == "text" and m.get("role") == "bot"), None)
+
+    return bot_reply or "⚠️ No response received from Botpress."
+
+# 🚀 Trigger on Submit
+if submit and user_input:
+    with st.spinner("Talking to your budgeting assistant..."):
+        response = talk_to_botpress(user_input)
+        st.markdown(f"**Bot Response:** {response}")
