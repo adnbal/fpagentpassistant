@@ -1,48 +1,49 @@
-# botpress_client.py
-
 import requests
+import time
 
 class BotpressClient:
     def __init__(self, bot_id, client_id, token):
         self.bot_id = bot_id
         self.client_id = client_id
         self.token = token
-        self.api_url = "https://chat.botpress.cloud/api/v1"
+        self.base_url = f"https://chat.botpress.cloud/v1"
 
     def create_conversation(self):
-        url = f"{self.api_url}/conversations"
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "x-bot-id": self.bot_id,
-            "x-client-id": self.client_id
-        }
-        response = requests.post(url, headers=headers)
-        response.raise_for_status()
-        return response.json()["id"]
-
-    def send_message(self, conversation_id, message):
-        url = f"{self.api_url}/conversations/{conversation_id}/messages"
+        url = f"{self.base_url}/conversations"
         headers = {
             "Authorization": f"Bearer {self.token}",
             "x-bot-id": self.bot_id,
             "x-client-id": self.client_id,
             "Content-Type": "application/json"
         }
-        data = {
+        response = requests.post(url, headers=headers)
+        if response.status_code != 200:
+            return None, response.text
+        return response.json().get("id"), None
+
+    def send_message(self, convo_id, message):
+        url = f"{self.base_url}/conversations/{convo_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "x-bot-id": self.bot_id,
+            "x-client-id": self.client_id,
+            "Content-Type": "application/json"
+        }
+        payload = {
             "type": "text",
             "text": message
         }
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        return response.json()
+        response = requests.post(url, headers=headers, json=payload)
+        return response.status_code, response.text
 
-    def list_messages(self, conversation_id):
-        url = f"{self.api_url}/conversations/{conversation_id}/messages"
+    def get_messages(self, convo_id):
+        url = f"{self.base_url}/conversations/{convo_id}/messages"
         headers = {
             "Authorization": f"Bearer {self.token}",
             "x-bot-id": self.bot_id,
             "x-client-id": self.client_id
         }
         response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        if response.status_code != 200:
+            return None, response.text
+        return response.json().get("messages", []), None
