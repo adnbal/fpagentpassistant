@@ -1,3 +1,4 @@
+# botpress_client.py
 import requests
 
 class BotpressClient:
