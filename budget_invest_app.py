@@ -1,39 +1,72 @@
 import streamlit as st
-from botpress_client import BotpressClient
-import time
+import requests
 
-# Load secrets
-BOT_ID = st.secrets["botpress"]["bot_id"]  # from your webchat embed
+# 🔐 Load Secrets
+BOT_ID = st.secrets["botpress"]["bot_id"]         # Used only for iframe display
 CLIENT_ID = st.secrets["botpress"]["client_id"]
 TOKEN = st.secrets["botpress"]["token"]
+DEEPSEEK_KEY = st.secrets["openrouter"]["api_key"]
 
-bot_client = BotpressClient(BOT_ID, CLIENT_ID, TOKEN)
-
+# 📄 App Config
+st.set_page_config(page_title="💸 Budget & Investment Chat Assistant", layout="centered")
 st.title("💬 Budgeting Chat Assistant")
-user_input = st.text_input("Type your question for the bot:")
 
-if st.button("Submit") and user_input:
-    st.write("🛠️ Creating conversation...")
-    convo_id, error = bot_client.create_conversation()
-    if error:
-        st.error(f"❌ Failed to create conversation: {error}")
-    else:
-        st.write("✉️ Sending message...")
-        status_code, response_text = bot_client.send_message(convo_id, user_input)
-        if status_code != 200:
-            st.error(f"❌ Failed to send message: {response_text}")
-        else:
-            st.write("⏳ Waiting for bot response...")
-            time.sleep(5)  # Wait for bot to respond
+st.markdown("""
+Welcome to your **AI-Powered Financial Assistant**!  
+Ask anything about your income, expenses, savings, or investments.  
+This chat is powered by **DeepSeek AI** for smart, reliable advice.
+""")
 
-            messages, err = bot_client.get_messages(convo_id)
-            if err:
-                st.error(f"⚠️ No messages returned from Botpress. {err}")
-            else:
-                st.write("📨 All messages:", messages)  # Debug log
-                bot_reply = next((m["payload"]["text"] for m in reversed(messages)
-                                  if m.get("type") == "text" and m.get("role") == "bot"), None)
-                if bot_reply:
-                    st.success(f"🤖 Bot Response: {bot_reply}")
-                else:
-                    st.warning("⚠️ Bot did not send a text response.")
+# 🧠 DeepSeek LLM Response
+def get_deepseek_response(prompt):
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": "You are a financial assistant. Provide clear, useful budgeting and investment advice."},
+            {"role": "user", "content": prompt}
+        ]
+    }
+    try:
+        res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+        if res.status_code == 200:
+            return res.json()['choices'][0]['message']['content']
+        return f"⚠️ Error {res.status_code}: {res.text}"
+    except Exception as e:
+        return f"⚠️ Exception: {e}"
+
+# 💬 User Input
+query = st.text_input("💬 Ask something about budgeting or investing:")
+
+if query:
+    with st.spinner("🔍 Thinking..."):
+        response = get_deepseek_response(query)
+        st.markdown("### 🤖 Bot Response")
+        st.markdown(response)
+
+# 🔲 Optional Botpress Visual Embed
+st.markdown("---")
+st.markdown("### 🔲 Optional Bot UI (for visual embed only)")
+st.components.v1.html(
+    f"""
+    <script src="https://cdn.botpress.cloud/webchat/v3.1/inject.js"></script>
+    <div id="webchat" style="width: 100%; height: 500px;"></div>
+    <script>
+      window.botpressWebChat.init({{
+        "botId": "{BOT_ID}",
+        "clientId": "{CLIENT_ID}",
+        "hostUrl": "https://cdn.botpress.cloud/webchat/v3",
+        "messagingUrl": "https://messaging.botpress.cloud",
+        "botName": "FPA",
+        "composerPlaceholder": "Ask me anything about budgeting or investing...",
+        "useSessionStorage": true,
+        "disableAnimations": false
+      }});
+    </script>
+    """,
+    height=520,
+    scrolling=True
+)
