@@ -1,40 +1,40 @@
 import streamlit as st
 from botpress_client import BotpressClient
 
-# Secrets
+# 🔐 Secrets from .streamlit/secrets.toml
 BOT_ID = st.secrets["botpress"]["bot_id"]
 CLIENT_ID = st.secrets["botpress"]["client_id"]
 TOKEN = st.secrets["botpress"]["token"]
 
-st.set_page_config(page_title="💬 Budget Bot", layout="centered")
-st.title("💬 Ask your Budgeting Assistant (Botpress)")
+# 🎯 Title
+st.set_page_config(page_title="🔁 Botpress Minimal Test")
+st.title("💬 Ask Botpress Assistant")
 
-# Initialize session state
+# 🚀 Initialize client
 if "conversation_id" not in st.session_state:
-    try:
-        client = BotpressClient(BOT_ID, CLIENT_ID, TOKEN)
-        conv = client.create_conversation()
-        st.session_state.conversation_id = conv["id"]
-        st.session_state.client = client
-    except Exception as e:
-        st.error("❌ Could not start conversation with Botpress.")
-        st.stop()
+    client = BotpressClient(BOT_ID, CLIENT_ID, TOKEN)
+    convo = client.create_conversation()
+    st.session_state.client = client
+    st.session_state.conversation_id = convo["id"]
 
-user_input = st.text_input("Type your message:")
-if st.button("Submit") and user_input:
-    try:
-        client = st.session_state.client
-        conversation_id = st.session_state.conversation_id
+# 📝 Input box
+user_input = st.text_input("Type your question for the bot:")
 
-        client.send_message(conversation_id, user_input)
-        st.success("✅ Message sent!")
-
-        st.markdown("**Botpress Reply:**")
-        messages = client.get_messages(conversation_id)
-        bot_messages = [m for m in messages["messages"] if m["type"] == "text" and m["role"] == "bot"]
-        if bot_messages:
-            st.write(bot_messages[-1]["payload"]["text"])
-        else:
-            st.warning("⚠️ No response received from Botpress.")
-    except Exception as e:
-        st.error(f"⚠️ Error: {e}")
+if st.button("Submit"):
+    if user_input:
+        try:
+            client = st.session_state.client
+            client.send_message(st.session_state.conversation_id, user_input)
+            messages = client.get_messages(st.session_state.conversation_id)
+            bot_replies = [
+                msg["payload"]["text"]
+                for msg in messages["messages"]
+                if msg["type"] == "text" and msg["role"] == "bot"
+            ]
+            if bot_replies:
+                st.success("Botpress replied:")
+                st.write(bot_replies[-1])
+            else:
+                st.warning("⚠️ No response received from Botpress.")
+        except Exception as e:
+            st.error(f"Error: {e}")
