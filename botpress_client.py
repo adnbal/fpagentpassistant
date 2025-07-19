@@ -1,3 +1,5 @@
+# botpress_client.py
+
 import requests
 
 class BotpressClient:
@@ -5,41 +7,41 @@ class BotpressClient:
         self.bot_id = bot_id
         self.client_id = client_id
         self.token = token
-        self.base_url = "https://chat.botpress.cloud/api/v1"
+        self.api_url = f"https://chat.botpress.cloud/api/v1"
 
     def create_conversation(self):
-        url = f"{self.base_url}/conversations"
+        url = f"{self.api_url}/conversations"
         headers = {
             "Authorization": f"Bearer {self.token}",
-            "X-Bot-Id": self.bot_id,
-            "X-Client-Id": self.client_id
+            "x-bot-id": self.bot_id,
+            "x-client-id": self.client_id
         }
         response = requests.post(url, headers=headers)
         response.raise_for_status()
-        return response.json()
+        return response.json()["id"]
 
     def send_message(self, conversation_id, message):
-        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        url = f"{self.api_url}/conversations/{conversation_id}/messages"
         headers = {
             "Authorization": f"Bearer {self.token}",
-            "X-Bot-Id": self.bot_id,
-            "X-Client-Id": self.client_id,
+            "x-bot-id": self.bot_id,
+            "x-client-id": self.client_id,
             "Content-Type": "application/json"
         }
-        data = {
+        payload = {
             "type": "text",
-            "payload": {"text": message}
+            "text": message
         }
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         return response.json()
 
     def list_messages(self, conversation_id):
-        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        url = f"{self.api_url}/conversations/{conversation_id}/messages"
         headers = {
             "Authorization": f"Bearer {self.token}",
-            "X-Bot-Id": self.bot_id,
-            "X-Client-Id": self.client_id
+            "x-bot-id": self.bot_id,
+            "x-client-id": self.client_id
         }
         response = requests.get(url, headers=headers)
         response.raise_for_status()
