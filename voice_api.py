@@ -1,26 +1,16 @@
-# 📁 voice_api.py
-
-from fastapi import FastAPI
-from pydantic import BaseModel
-import requests
-import os
-
-app = FastAPI()
-
-class VoiceInput(BaseModel):
-    message: str
-
 @app.post("/api/voice")
-def voice_to_agent(input: VoiceInput):
-    user_message = input.message
-
-    # Example: Forward to your Streamlit agent or Botpress
-    # This is a placeholder — replace with actual logic/API call
-    streamlit_agent_url = os.getenv("STREAMLIT_AGENT_URL", "https://pafadvisor.streamlit.app")
-
-    # In a real case, you could store, forward, or process this message
-    print(f"🔁 Forwarding message to Streamlit agent: {user_message}")
-
-    return {
-        "reply": f"🧠 Received: '{user_message}'. This will be sent to your agent at {streamlit_agent_url}."
-    }
+async def handle_voice_input(data: VoiceInput):
+    user_text = data.text
+    bot_client = BotpressClient(api_id=API_ID, user_key=USER_KEY)
+    conv = bot_client.create_conversation()
+    conv_id = conv["id"]
+    bot_client.send_message(conv_id, user_text)
+    response = bot_client.list_messages(conv_id)
+    
+    # Extract last reply
+    messages = response.get("messages", [])
+    if messages:
+        for m in reversed(messages):
+            if m["type"] == "text" and m["role"] == "assistant":
+                return {"reply": m["text"]}
+    return {"reply": "No reply from Botpress."}
