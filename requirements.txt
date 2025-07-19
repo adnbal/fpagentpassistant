@@ -1,5 +1,6 @@
-fastapi
-uvicorn
+streamlit
+pandas
 requests
-pydantic
 plotly
+google-generativeai
+openai
