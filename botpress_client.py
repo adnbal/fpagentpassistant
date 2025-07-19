@@ -1,10 +1,8 @@
-# botpress_client.py
-
 import requests
 
 class BotpressClient:
     def __init__(self, api_id, user_key):
-        self.api_id = api_id.replace("bot_", "")  # remove 'bot_' if present
+        self.api_id = api_id
         self.user_key = user_key
         self.headers = {
             "Authorization": f"Bearer {self.user_key}",
@@ -14,8 +12,7 @@ class BotpressClient:
 
     def create_conversation(self):
         url = f"{self.base_url}/conversations"
-        payload = {"botId": self.api_id}
-        response = requests.post(url, headers=self.headers, json=payload)
+        response = requests.post(url, headers=self.headers)
         if response.status_code != 200:
             print("❌ Failed to create conversation:", response.text)
         return response.json()
