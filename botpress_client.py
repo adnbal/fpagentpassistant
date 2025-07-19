@@ -2,25 +2,38 @@ import requests
 
 class BotpressClient:
     def __init__(self, api_id, user_key):
-        self.api_id = api_id
-        self.user_key = user_key
+        self.bot_id = api_id
+        self.token = user_key
+        self.base_url = "https://chat.botpress.cloud/api/v1"
         self.headers = {
-            "Authorization": f"Bearer {self.user_key}",
-            "X-Botpress-API-URL": f"https://chat.botpress.cloud/{self.api_id}"
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json"
         }
 
     def create_conversation(self):
-        url = "https://chat.botpress.cloud/api/v1/conversations"
-        response = requests.post(url, headers=self.headers)
-        return response.json()
-
-    def list_messages(self, conversation_id):
-        url = f"https://chat.botpress.cloud/api/v1/conversations/{conversation_id}/messages"
-        response = requests.get(url, headers=self.headers)
+        url = f"{self.base_url}/conversations"
+        payload = {
+            "botId": self.bot_id
+        }
+        response = requests.post(url, headers=self.headers, json=payload)
+        if response.status_code != 200:
+            print("❌ Failed to create conversation:", response.text)
         return response.json()
 
     def send_message(self, conversation_id, text):
-        url = f"https://chat.botpress.cloud/api/v1/conversations/{conversation_id}/messages"
-        payload = {"type": "text", "text": text}
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        payload = {
+            "type": "text",
+            "text": text
+        }
         response = requests.post(url, headers=self.headers, json=payload)
+        if response.status_code != 200:
+            print("❌ Failed to send message:", response.text)
+        return response.json()
+
+    def list_messages(self, conversation_id):
+        url = f"{self.base_url}/conversations/{conversation_id}/messages"
+        response = requests.get(url, headers=self.headers)
+        if response.status_code != 200:
+            print("❌ Failed to retrieve messages:", response.text)
         return response.json()
