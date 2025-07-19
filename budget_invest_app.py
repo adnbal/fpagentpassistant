@@ -2,96 +2,99 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import google.generativeai as genai
-import requests
+import datetime
 from botpress_client import BotpressClient
 
-# 🔐 Secrets
-CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
-BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
+# 🔐 Load secrets
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
+CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
+BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 
-# 📄 App config
-st.set_page_config(page_title="💸 Budget & Investment Planner (Botpress + Gemini + DeepSeek)", layout="wide")
+# 📄 Page Config
+st.set_page_config(page_title="💸 Multi-LLM Budget Planner", layout="wide")
 st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
 
-# 📊 Dummy financial return data (replace Alpha Vantage)
-def get_dummy_monthly_return():
-    dates = pd.date_range(end=pd.Timestamp.today(), periods=12, freq='M')
-    data = {
-        "date": dates,
-        "adj_close": [100 + i * 2 + (i % 3 - 1) * 5 for i in range(12)]  # some varied uptrend
-    }
-    df = pd.DataFrame(data)
-    return df
+# 📊 Input Form
+with st.sidebar.form("budget_form"):
+    st.subheader("Enter Your Monthly Budget Details")
+    income = st.number_input("Monthly Income", value=5000)
+    expenses = st.number_input("Monthly Expenses", value=3000)
+    savings = st.number_input("Current Savings", value=10000)
+    submitted = st.form_submit_button("Submit")
 
-# 📉 Line chart for investment returns
-st.subheader("📈 Monthly Investment Return (Dummy Data)")
-df = get_dummy_monthly_return()
-fig = px.line(df, x="date", y="adj_close", title="Monthly Adjusted Close Price (Synthetic)")
-st.plotly_chart(fig, use_container_width=True)
+# ⚠️ Warnings & Suggestions
+if submitted:
+    st.subheader("📌 Insights & Warnings")
 
-# 💬 Income, Expenses, and Savings Inputs
-st.subheader("💰 Enter Your Budget Details")
+    if expenses > income:
+        st.error("🚨 You are spending more than your income! Consider cutting down expenses.")
+    elif expenses > 0.8 * income:
+        st.warning("⚠️ Your expenses are over 80% of your income. Try to save more.")
+    else:
+        st.success("✅ Good job! You're managing expenses well.")
 
-income = st.number_input("Monthly Income ($)", min_value=0)
-expenses = st.number_input("Monthly Expenses ($)", min_value=0)
-savings = income - expenses
-st.metric("Estimated Monthly Savings", f"${savings:,.2f}")
+    st.info(f"💡 Savings Rate: {round((income - expenses) / income * 100, 2)}%")
 
-# ⚠️ Dynamic Warning
-if savings < 100:
-    st.warning("⚠️ Your savings are low! Consider reducing your expenses.")
-elif savings > 1000:
-    st.success("🎉 Great! You have strong savings potential.")
+    # Dummy Investment Forecast (replace Alpha Vantage)
+    st.subheader("📈 Investment Forecast (Dummy)")
+    dates = pd.date_range(end=pd.Timestamp.today(), periods=24, freq="ME")
+    prices = [100 + i * 2 + (i % 5) * 1.5 for i in range(24)]
+    df = pd.DataFrame({"date": dates, "adj_close": prices})
+    fig = px.line(df, x="date", y="adj_close", title="Simulated Investment Growth (e.g., SPY ETF)")
+    st.plotly_chart(fig, use_container_width=True)
 
-# 🤖 Gemini AI: Smart Suggestions
-st.subheader("🤖 Gemini Financial Suggestion")
+# 🤖 Gemini Suggestion
+st.subheader("🤖 Gemini Advice")
+if submitted:
+    prompt = f"My monthly income is {income}, expenses are {expenses}, and I have savings of {savings}. Provide financial advice."
+    response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
+    st.write(response.text)
 
-if income > 0 and expenses > 0:
-    prompt = f"""You are a financial planner AI. The user has a monthly income of ${income} and monthly expenses of ${expenses}.
-    Provide budgeting and investment advice in a friendly tone."""
-    gemini_response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
-    st.info(gemini_response.text)
-
-# 📢 DeepSeek AI (via OpenRouter)
-st.subheader("🧠 DeepSeek Investment Advice")
-
-if income > 0 and expenses > 0:
-    deepseek_prompt = f"""You are an expert investment advisor. The user's income is ${income} and expenses are ${expenses}.
-    Give investment suggestions and asset allocation tips."""
+# 🧠 DeepSeek Agent Suggestion
+st.subheader("🧠 DeepSeek Advice")
+if submitted:
+    import requests
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "HTTP-Referer": "https://pafadvisor.streamlit.app/",
+        "X-Title": "Budgeting Assistant"
     }
-    payload = {
+    data = {
         "model": "deepseek/deepseek-chat",
-        "messages": [{"role": "user", "content": deepseek_prompt}]
+        "messages": [
+            {"role": "user", "content": f"My income is {income}, expenses {expenses}, savings {savings}. Suggest investment plan."}
+        ]
     }
-    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-    if response.status_code == 200:
-        reply = response.json()["choices"][0]["message"]["content"]
-        st.success(reply)
-    else:
-        st.error("DeepSeek failed to respond.")
+    r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=data)
+    reply = r.json()["choices"][0]["message"]["content"]
+    st.write(reply)
 
-# 💬 Botpress Assistant
-st.subheader("😄 Chat with Botpress AI")
+# 💬 Chat with Botpress
+st.subheader("😎 Chat with Botpress AI")
+st.markdown("Ask your Budgeting Assistant (Botpress):")
 
-query = st.text_input("Ask your Budgeting Assistant (Botpress):")
-submit = st.button("Submit")
+# Chat form
+with st.form("chat_form", clear_on_submit=True):
+    user_query = st.text_input("Your message:", key="chat_input")
+    chat_submit = st.form_submit_button("Submit")
 
-if submit and query:
+# Botpress session and logic
+if "conversation_id" not in st.session_state:
     client = BotpressClient(api_id=CHAT_API_ID, user_key=BOTPRESS_TOKEN)
     conv = client.create_conversation()
-    conv_id = conv.get("id")
-    if conv_id:
-        client.send_message(conv_id, query)
-        result = client.list_messages(conv_id)
-        messages = result.get("messages", [])
-        for m in reversed(messages):
-            if m["type"] == "text" and m["role"] == "assistant":
-                st.markdown(f"**🤖 Botpress Reply:** {m['text']}")
-                break
+    st.session_state.conversation_id = conv.get("id")
+
+if chat_submit and user_query:
+    client = BotpressClient(api_id=CHAT_API_ID, user_key=BOTPRESS_TOKEN)
+    client.send_message(st.session_state.conversation_id, user_query)
+    messages = client.list_messages(st.session_state.conversation_id)
+
+    if messages and "messages" in messages:
+        replies = [m["text"] for m in messages["messages"] if m["role"] == "assistant" and m["type"] == "text"]
+        if replies:
+            st.success(f"💬 Botpress: {replies[-1]}")
+        else:
+            st.warning("Botpress did not reply.")
     else:
-        st.error("❌ Failed to create Botpress conversation.")
+        st.error("⚠️ Failed to retrieve messages.")
