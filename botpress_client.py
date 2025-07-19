@@ -7,7 +7,7 @@ class BotpressClient:
         self.bot_id = bot_id
         self.client_id = client_id
         self.token = token
-        self.api_url = f"https://chat.botpress.cloud/api/v1"
+        self.api_url = "https://chat.botpress.cloud/api/v1"
 
     def create_conversation(self):
         url = f"{self.api_url}/conversations"
@@ -28,11 +28,11 @@ class BotpressClient:
             "x-client-id": self.client_id,
             "Content-Type": "application/json"
         }
-        payload = {
+        data = {
             "type": "text",
             "text": message
         }
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=data)
         response.raise_for_status()
         return response.json()
 
