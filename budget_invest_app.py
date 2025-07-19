@@ -3,19 +3,20 @@ import pandas as pd
 import plotly.express as px
 import requests
 import google.generativeai as genai
+import openai
 
-# 🔐 Secrets
+# 🔐 Secrets from Streamlit
 CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
 BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
 API_KEY = st.secrets["alpha_vantage"]["api_key"]
 
-# 📄 App config
-st.set_page_config(page_title="💸 Multi-LLM Budget Planner", layout="wide")
+# ⚙️ App config
+st.set_page_config(page_title="💸 Budgeting + Investment Planner", layout="wide")
 st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
 
-# 📉 Alpha Vantage return function
+# 📉 Alpha Vantage return function with debug
 def get_alpha_vantage_monthly_return(symbol):
     url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol={symbol}&apikey={API_KEY}"
     r = requests.get(url)
@@ -24,8 +25,12 @@ def get_alpha_vantage_monthly_return(symbol):
         return None
 
     data = r.json()
+
+    # Debug: show raw data if expected structure is missing
     if "Monthly Adjusted Time Series" not in data:
         st.error("Alpha Vantage API response is missing expected data.")
+        st.markdown("### Raw API Response:")
+        st.json(data)
         return None
 
     ts = data["Monthly Adjusted Time Series"]
@@ -49,13 +54,13 @@ if df_returns is not None:
     st.line_chart(df_returns["adjusted_close"], use_container_width=True)
     st.bar_chart(df_returns["monthly_return"], use_container_width=True)
 
-# 💰 User budget input
+# 🧾 Budget input
 st.subheader("🧾 Enter Your Budget Details")
 income = st.number_input("Monthly Income", min_value=0)
 expenses = st.number_input("Monthly Expenses", min_value=0)
 savings = st.number_input("Target Savings", min_value=0)
 
-# 🚨 Warnings
+# ⚠️ Budget logic
 if income > 0:
     if expenses > income:
         st.warning("⚠️ Your expenses exceed your income. Consider reducing discretionary spending.")
@@ -64,15 +69,14 @@ if income > 0:
     else:
         st.success("✅ Your budgeting plan looks healthy!")
 
-# 🤖 Gemini AI advice
+# 🤖 Gemini advice
 if income > 0 and expenses > 0:
     prompt = f"My income is ${income}, expenses are ${expenses}, and I want to save ${savings} monthly. Give personalized budgeting and investment advice."
     response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
     st.subheader("🤖 Gemini Financial Advisor")
     st.markdown(response.text)
 
-# 🤖 DeepSeek AI investment ideas (via OpenRouter)
-import openai
+# 💡 DeepSeek investment tips
 openai.api_key = OPENROUTER_API_KEY
 openai.api_base = "https://openrouter.ai/api/v1"
 
@@ -91,7 +95,7 @@ if income > 0 and expenses > 0:
     except Exception as e:
         st.error(f"DeepSeek error: {e}")
 
-# 💬 Embedded Botpress assistant
+# 💬 Botpress iframe
 st.subheader("🧠 Ask the Budgeting Bot")
 st.components.v1.iframe(
     f"https://chat.botpress.cloud/{CHAT_API_ID}",
