@@ -10,66 +10,78 @@ CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
 BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
-API_KEY = st.secrets.get("alpha_vantage", {}).get("api_key", "")
 
 # 📄 App config
-st.set_page_config(page_title="💸 Budget & Investment Planner", layout="wide")
+st.set_page_config(page_title="💸 Budget & Investment Planner (Botpress + Gemini + DeepSeek)", layout="wide")
 st.title("💸 Budgeting + Investment Planner (Multi-LLM AI Suggestions)")
 
-# 🎯 Try fetching data from Alpha Vantage, else fallback
-@st.cache_data
-def get_alpha_vantage_monthly_return(symbol):
-    try:
-        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol={symbol}&apikey={API_KEY}"
-        r = requests.get(url)
-        data = r.json()
-        ts = data.get("Monthly Adjusted Time Series", {})
-        if not ts:
-            raise ValueError("Alpha Vantage returned no data.")
-        df = pd.DataFrame.from_dict(ts, orient="index")
-        df.index = pd.to_datetime(df.index)
-        df.sort_index(inplace=True)
-        df["adj_close"] = pd.to_numeric(df["5. adjusted close"], errors="coerce")
-        df = df[["adj_close"]].dropna()
-        return df.tail(12)
-    except Exception as e:
-        st.warning("📉 Could not fetch from Alpha Vantage. Using dummy returns.")
-        dates = pd.date_range(end=pd.Timestamp.today(), periods=12, freq='M')
-        returns = [100 + i * 2 + (i % 3) * 5 for i in range(12)]
-        df = pd.DataFrame({"adj_close": returns}, index=dates)
-        return df
+# 📊 Dummy financial return data (replace Alpha Vantage)
+def get_dummy_monthly_return():
+    dates = pd.date_range(end=pd.Timestamp.today(), periods=12, freq='M')
+    data = {
+        "date": dates,
+        "adj_close": [100 + i * 2 + (i % 3 - 1) * 5 for i in range(12)]  # some varied uptrend
+    }
+    df = pd.DataFrame(data)
+    return df
 
-# 📊 Display past returns
-st.subheader("📈 Investment Trend: SPY (or Simulated)")
-df = get_alpha_vantage_monthly_return("SPY")
-st.line_chart(df)
+# 📉 Line chart for investment returns
+st.subheader("📈 Monthly Investment Return (Dummy Data)")
+df = get_dummy_monthly_return()
+fig = px.line(df, x="date", y="adj_close", title="Monthly Adjusted Close Price (Synthetic)")
+st.plotly_chart(fig, use_container_width=True)
 
-# 🧾 Input
-income = st.number_input("Monthly Income", min_value=0)
-expenses = st.number_input("Monthly Expenses", min_value=0)
-savings = st.number_input("Monthly Savings", min_value=0)
+# 💬 Income, Expenses, and Savings Inputs
+st.subheader("💰 Enter Your Budget Details")
 
-# ⚠️ Warnings
-if expenses > income:
-    st.error("🚨 Your expenses are greater than your income!")
-elif savings < income * 0.2:
-    st.warning("💡 You are saving less than 20% of your income. Consider reducing expenses.")
-else:
-    st.success("✅ Your budgeting looks healthy!")
+income = st.number_input("Monthly Income ($)", min_value=0)
+expenses = st.number_input("Monthly Expenses ($)", min_value=0)
+savings = income - expenses
+st.metric("Estimated Monthly Savings", f"${savings:,.2f}")
 
-# 💡 Gemini Investment Advice
-if st.button("Ask Gemini for Investment Suggestions"):
-    prompt = f"My income is {income}, expenses are {expenses}, savings {savings}. Give investment advice."
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    st.markdown("### 🧠 Gemini's Suggestions:")
-    st.info(response.text)
+# ⚠️ Dynamic Warning
+if savings < 100:
+    st.warning("⚠️ Your savings are low! Consider reducing your expenses.")
+elif savings > 1000:
+    st.success("🎉 Great! You have strong savings potential.")
 
-# 💬 Botpress Chat Assistant
-st.subheader("🤖 Chat with Botpress AI")
+# 🤖 Gemini AI: Smart Suggestions
+st.subheader("🤖 Gemini Financial Suggestion")
 
-query = st.text_input("Ask your Budgeting Assistant (Botpress):", key="user_query")
-if query:
+if income > 0 and expenses > 0:
+    prompt = f"""You are a financial planner AI. The user has a monthly income of ${income} and monthly expenses of ${expenses}.
+    Provide budgeting and investment advice in a friendly tone."""
+    gemini_response = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt)
+    st.info(gemini_response.text)
+
+# 📢 DeepSeek AI (via OpenRouter)
+st.subheader("🧠 DeepSeek Investment Advice")
+
+if income > 0 and expenses > 0:
+    deepseek_prompt = f"""You are an expert investment advisor. The user's income is ${income} and expenses are ${expenses}.
+    Give investment suggestions and asset allocation tips."""
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "deepseek/deepseek-chat",
+        "messages": [{"role": "user", "content": deepseek_prompt}]
+    }
+    response = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+    if response.status_code == 200:
+        reply = response.json()["choices"][0]["message"]["content"]
+        st.success(reply)
+    else:
+        st.error("DeepSeek failed to respond.")
+
+# 💬 Botpress Assistant
+st.subheader("😄 Chat with Botpress AI")
+
+query = st.text_input("Ask your Budgeting Assistant (Botpress):")
+submit = st.button("Submit")
+
+if submit and query:
     client = BotpressClient(api_id=CHAT_API_ID, user_key=BOTPRESS_TOKEN)
     conv = client.create_conversation()
     conv_id = conv.get("id")
@@ -79,7 +91,7 @@ if query:
         messages = result.get("messages", [])
         for m in reversed(messages):
             if m["type"] == "text" and m["role"] == "assistant":
-                st.success(m["text"])
+                st.markdown(f"**🤖 Botpress Reply:** {m['text']}")
                 break
     else:
-        st.error("❌ Failed to connect to Botpress.")
+        st.error("❌ Failed to create Botpress conversation.")
