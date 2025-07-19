@@ -4,7 +4,7 @@ import plotly.express as px
 import requests
 import google.generativeai as genai
 import openai
-import json
+import numpy as np
 from botpress_client import BotpressClient
 
 # 🔐 Load secrets
@@ -12,7 +12,6 @@ CHAT_API_ID = st.secrets["botpress"]["chat_api_id"]
 BOTPRESS_TOKEN = st.secrets["botpress"]["token"]
 genai.configure(api_key=st.secrets["gemini"]["api_key"])
 OPENROUTER_API_KEY = st.secrets["openrouter"]["api_key"]
-ALPHA_VANTAGE_API_KEY = st.secrets["alpha_vantage"]["api_key"]
 
 # 📄 Streamlit setup
 st.set_page_config(page_title="💸 Multi-LLM Budget Planner", layout="wide")
@@ -46,29 +45,35 @@ if warnings:
     for w in warnings:
         st.warning(w)
 
-# 📈 Alpha Vantage investment data
+# 📈 Simulated investment return function (fallback for Alpha Vantage)
 def get_alpha_vantage_monthly_return(symbol):
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_MONTHLY_ADJUSTED&symbol={symbol}&apikey={ALPHA_VANTAGE_API_KEY}"
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    data = r.json()
-    ts = data.get("Monthly Adjusted Time Series", {})
-    df = pd.DataFrame(ts).T
-    df.index = pd.to_datetime(df.index)
-    df = df.sort_index()
-    df["adj_close"] = pd.to_numeric(df["5. adjusted close"], errors="coerce")
-    df["monthly_return"] = df["adj_close"].pct_change()
-    return df[["adj_close", "monthly_return"]].dropna()
+    use_dummy = True  # Always use simulated data (avoid API errors)
+    
+    if not use_dummy:
+        # Optionally implement real Alpha Vantage here
+        pass
+
+    # 📊 Simulated fallback data
+    dates = pd.date_range(end=pd.Timestamp.today(), periods=24, freq="M")
+    base_price = 400
+    simulated_prices = [base_price + np.random.normal(0, 5) + i * 2 for i in range(len(dates))]
+    simulated_returns = pd.Series(simulated_prices).pct_change().fillna(0)
+
+    df_sim = pd.DataFrame({
+        "adj_close": simulated_prices,
+        "monthly_return": simulated_returns
+    }, index=dates)
+
+    return df_sim
 
 # 📉 Show investment returns
-with st.expander("📈 Investment Option Analysis (S&P 500)"):
+with st.expander("📈 Investment Option Analysis (Simulated S&P 500)"):
     df = get_alpha_vantage_monthly_return("SPY")
     if df is not None:
         st.line_chart(df["adj_close"])
         st.line_chart(df["monthly_return"])
     else:
-        st.error("Failed to fetch Alpha Vantage data.")
+        st.error("Failed to load investment data.")
 
 # 🧠 Gemini Suggestions
 def gemini_budget_advice(income, expenses, savings):
@@ -98,10 +103,11 @@ Provide budgeting and investment advice."""
 
 # 🔮 LLM Advice
 st.subheader("🔮 AI-Based Financial Suggestions")
-tab1, tab2 = st.tabs(["Gemini Advice", "DeepSeek Advice"])
-with tab1:
+
+if st.button("💬 Get Gemini Suggestions"):
     st.markdown(gemini_budget_advice(income, expenses, savings))
-with tab2:
+
+if st.button("🧠 Get DeepSeek Suggestions"):
     st.markdown(deepseek_advice(income, expenses, savings))
 
 # 💬 Botpress Chat
