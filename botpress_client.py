@@ -1,4 +1,3 @@
-# botpress_client.py
 import requests
 
 class BotpressClient:
@@ -16,6 +15,7 @@ class BotpressClient:
             "X-Client-Id": self.client_id
         }
         response = requests.post(url, headers=headers)
+        response.raise_for_status()
         return response.json()
 
     def send_message(self, conversation_id, message):
@@ -28,11 +28,10 @@ class BotpressClient:
         }
         data = {
             "type": "text",
-            "payload": {
-                "text": message
-            }
+            "payload": {"text": message}
         }
         response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
         return response.json()
 
     def list_messages(self, conversation_id):
@@ -43,4 +42,5 @@ class BotpressClient:
             "X-Client-Id": self.client_id
         }
         response = requests.get(url, headers=headers)
+        response.raise_for_status()
         return response.json()
