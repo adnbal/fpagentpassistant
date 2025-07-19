@@ -8,14 +8,11 @@ class BotpressClient:
             "Authorization": f"Bearer {self.user_key}",
             "Content-Type": "application/json"
         }
-        self.base_url = "https://chat.botpress.cloud/api/v1"
+        self.base_url = f"https://chat.botpress.cloud/{self.api_id}/api/v1"
 
     def create_conversation(self):
         url = f"{self.base_url}/conversations"
-        payload = {
-            "botId": self.api_id
-        }
-        response = requests.post(url, headers=self.headers, json=payload)
+        response = requests.post(url, headers=self.headers)
         if response.status_code != 200:
             print("❌ Failed to create conversation:", response.text)
         return response.json()
